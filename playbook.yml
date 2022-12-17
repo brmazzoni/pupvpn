@@ -1,0 +1,83 @@
+# Deploy VPN server
+- name: Deploy Strongswan VPN (minimal)
+  become: yes
+  hosts: all
+  gather_facts: no
+  tasks:
+
+    - name: Wait 600 seconds for target connection to become reachable/usable
+      ansible.builtin.wait_for_connection:
+
+    - name: gather facts
+      ansible.builtin.setup:
+
+    - name: ufw allow ssh connections
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: ufw enable
+      community.general.ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+
+    - name: update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: install strongswan packages
+      ansible.builtin.apt:
+        pkg:
+        - strongswan
+
+    - name: install certificates
+      ansible.builtin.copy:
+        src: pki/
+        dest: /etc/ipsec.d/
+
+    - name: install ipsec conf
+      ansible.builtin.template:
+        src: ipsec.conf.j2
+        dest: /etc/ipsec.conf
+
+    - name: install ipsec secrets
+      ansible.builtin.copy:
+        src: ipsec.secrets
+        dest: /etc/ipsec.secrets
+        mode: '0600'
+
+    - name: restart strongswan
+      ansible.builtin.command: systemctl restart strongswan-starter
+
+    # UFW conf
+    - name: allow UDP traffic to the standard IPSec ports
+      community.general.ufw:
+        rule: allow
+        port: '500,4500'
+        proto: udp
+
+    - name: ufw before rules
+      ansible.builtin.copy:
+        src: before.rules
+        dest: /etc/ufw/before.rules
+
+    - name: ufw sysctl conf
+      ansible.builtin.copy:
+        src: sysctl.conf
+        dest: /etc/ufw/sysctl.conf
+
+    # reset ufw to enable new conf
+    - name: ufw disable
+      community.general.ufw:
+        state: disabled
+
+    - name: ufw enable
+      community.general.ufw:
+        state: enabled
+
+    - name: retreive certificate
+      ansible.builtin.fetch:
+        src: /etc/ipsec.d/cacerts/ca-cert.pem  
+        dest: ./
+        flat: yes
